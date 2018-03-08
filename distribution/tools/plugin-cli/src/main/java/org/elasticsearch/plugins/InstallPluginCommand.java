@@ -586,7 +586,7 @@ class InstallPluginCommand extends EnvironmentAwareCommand {
         // TODO: verify the classname exists in one of the jars!
 
         // check combined (current classpath + new jars to-be-added)
-        JarHell.checkJarHell(jars);
+        // JarHell.checkJarHell(jars);
     }
 
     /**

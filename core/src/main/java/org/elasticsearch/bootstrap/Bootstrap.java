@@ -192,12 +192,12 @@ final class Bootstrap {
             });
         }
 
-        try {
-            // look for jar hell
-            JarHell.checkJarHell();
-        } catch (IOException | URISyntaxException e) {
-            throw new BootstrapException(e);
-        }
+//        try {
+//            // look for jar hell
+//            JarHell.checkJarHell();
+//        } catch (IOException | URISyntaxException e) {
+//            throw new BootstrapException(e);
+//        }
 
         // Log ifconfig output before SecurityManager is installed
         IfConfig.logIfNecessary();

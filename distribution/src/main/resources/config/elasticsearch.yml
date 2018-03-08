@@ -14,13 +14,13 @@
 #
 # Use a descriptive name for your cluster:
 #
-#cluster.name: my-application
+cluster.name: cluster-name
 #
 # ------------------------------------ Node ------------------------------------
 #
 # Use a descriptive name for the node:
 #
-#node.name: node-1
+node.name: node-name
 #
 # Add custom attributes to the node:
 #
@@ -30,17 +30,17 @@
 #
 # Path to directory where to store the data (separate multiple locations by comma):
 #
-${path.data}
+path.data: /data1/data/elasticsearch
 #
 # Path to log files:
 #
-${path.logs}
+path.logs: /data1/logs/elasticsearch
 #
 # ----------------------------------- Memory -----------------------------------
 #
 # Lock the memory on startup:
 #
-#bootstrap.memory_lock: true
+bootstrap.memory_lock: false
 #
 # Make sure that the heap size is set to about half the memory available
 # on the system and that the owner of the process is allowed to use this
@@ -52,11 +52,11 @@ ${path.logs}
 #
 # Set the bind address to a specific IP (IPv4 or IPv6):
 #
-#network.host: 192.168.0.1
+network.host: 0.0.0.0
 #
 # Set a custom port for HTTP:
 #
-#http.port: 9200
+http.port: 9200
 #
 # For more information, consult the network module documentation.
 #
@@ -86,3 +86,6 @@ ${path.logs}
 # Require explicit names when deleting indices:
 #
 #action.destructive_requires_name: true
+
+# http.cors.enabled: true
+# http.cors.allow-origin: "*"
