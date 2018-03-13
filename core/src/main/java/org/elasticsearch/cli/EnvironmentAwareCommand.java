@@ -44,6 +44,9 @@ public abstract class EnvironmentAwareCommand extends Command {
     }
 
     @Override
+    /**
+     * $$$ check输入参数. 无实质性的进展。
+     */
     protected void execute(Terminal terminal, OptionSet options) throws Exception {
         final Map<String, String> settings = new HashMap<>();
         for (final KeyValuePair kvp : settingOption.values(options)) {

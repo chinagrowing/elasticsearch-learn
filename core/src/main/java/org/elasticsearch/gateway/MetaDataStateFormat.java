@@ -197,8 +197,14 @@ public abstract class MetaDataStateFormat<T> {
                 long filePointer = indexInput.getFilePointer();
                 long contentSize = indexInput.length() - CodecUtil.footerLength() - filePointer;
                 try (IndexInput slice = indexInput.slice("state_xcontent", filePointer, contentSize)) {
+                    /**
+                     * $$$ xContentType决定了XContentParser 的类型。如SmileXContentParser
+                     */
                     try (XContentParser parser = XContentFactory.xContent(xContentType).createParser(namedXContentRegistry,
                             new InputStreamIndexInput(slice, contentSize))) {
+                        /**
+                         * $$$ fromXContent可以在初始化MetaDataStateFormat的时候实现。例如，在IndexMetaData中的属性FORMAT。
+                         */
                         return fromXContent(parser);
                     }
                 }

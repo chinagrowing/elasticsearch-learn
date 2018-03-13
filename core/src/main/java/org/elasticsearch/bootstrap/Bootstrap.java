@@ -163,11 +163,21 @@ final class Bootstrap {
         Settings settings = environment.settings();
 
         try {
+            /**
+             * $$$ 每一个插件都会生成一个新的进程。记录在spawner的List<Process> processes下
+             */
             spawner.spawnNativePluginControllers(environment);
         } catch (IOException e) {
             throw new BootstrapException(e);
         }
 
+        /**
+         * $$$ 在elasticsearch.yml 中多个参数配置：
+         * bootstrap.memory_lock：设置为true来锁住内存。因为当jvm开始swapping时es的效率会降低，所以要保证它不swap，
+         * 可以把ES_MIN_MEM和ES_MAX_MEM两个环境变量设置成同一个值，并且保证机器有足够的内存分配给es。
+         * bootstrap.system_call_filter：系统调用过滤器，建议禁用该项检查，因为很多检查项需要Linux 3.5以上的内核。
+         * bootstrap.ctrlhandler: 这个参数似乎特别少用，google和baidu中相关文档极少。不大清楚含义
+         */
         initializeNatives(
                 environment.tmpFile(),
                 BootstrapSettings.MEMORY_LOCK_SETTING.get(settings),
@@ -177,6 +187,9 @@ final class Bootstrap {
         // initialize probes before the security manager is installed
         initializeProbes();
 
+        /**
+         * $$$ 添加钩子，退出时关闭node进程和插件进程
+         */
         if (addShutdownHook) {
             Runtime.getRuntime().addShutdownHook(new Thread() {
                 @Override
@@ -203,6 +216,9 @@ final class Bootstrap {
         IfConfig.logIfNecessary();
 
         // install SM after natives, shutdown hooks, etc.
+        /**
+         * $$$ 与Security相关目前不清晰
+         */
         try {
             Security.configure(environment, BootstrapSettings.SECURITY_FILTER_BAD_DEFAULTS_SETTING.get(settings));
         } catch (IOException | NoSuchAlgorithmException e) {
@@ -280,8 +296,18 @@ final class Bootstrap {
             final Environment initialEnv) throws BootstrapException, NodeValidationException, UserException {
         // force the class initializer for BootstrapInfo to run before
         // the security manager is installed
+        /**
+         * $$$ init() 没有进行任何操作。由于BootstrapInfo为final class，个人认为此处仅为初始化。
+         * Bootstrap.init(true, null, false, initialEnv);
+         */
         BootstrapInfo.init();
 
+        /**
+         * $$$ 该方法围绕3个语句来进行：初始化，配置，启动
+         * INSTANCE = new Bootstrap();
+         * INSTANCE.setup(true, environment);
+         * INSTANCE.start();
+         */
         INSTANCE = new Bootstrap();
 
         final SecureSettings keystore = loadSecureSettings(initialEnv);

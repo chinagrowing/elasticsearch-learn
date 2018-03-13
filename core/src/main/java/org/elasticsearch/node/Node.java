@@ -254,6 +254,10 @@ public class Node implements Closeable {
             logger.info("initializing ...");
 
         }
+        /**
+         * $$$ node初始化逻辑很多，但都是围绕几个Node属性展开。
+         * injector： es使用guice而不是spring作为依赖注入。需要创建大量Module
+         */
         try {
             Settings tmpSettings = Settings.builder().put(environment.settings())
                 .put(Client.CLIENT_TYPE_SETTING_S.getKey(), CLIENT_TYPE).build();
@@ -607,6 +611,9 @@ public class Node implements Closeable {
         assert localNodeFactory.getNode() != null;
         assert transportService.getLocalNode().equals(localNodeFactory.getNode())
             : "transportService has a different local node than the factory provided";
+        /**
+         * $$$ 从磁盘中读取数据，parse到IndexMeatData.
+         */
         final MetaData onDiskMetadata;
         try {
             // we load the global state here (the persistent part of the cluster state stored on disk) to

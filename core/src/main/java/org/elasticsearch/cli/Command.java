@@ -58,7 +58,13 @@ public abstract class Command implements Closeable {
     final SetOnce<Thread> shutdownHookThread = new SetOnce<>();
 
     /** Parses options for this command from args and executes it. */
+    /**
+     * $$$ 在Command 这一层main方法中，主要处理 异常处理钩子，日志系统的初始化（Configurator initial）, 将输入参数解析（如：es.path.conf）。
+     */
     public final int main(String[] args, Terminal terminal) throws Exception {
+        /**
+         * $$$ 增加钩子，在异常退出时答应错误堆栈信息
+         */
         if (addShutdownHook()) {
             shutdownHookThread.set(new Thread(() -> {
                 try {
@@ -79,6 +85,10 @@ public abstract class Command implements Closeable {
             Runtime.getRuntime().addShutdownHook(shutdownHookThread.get());
         }
 
+        /**
+         * $$$ 配置 LogConfigurator，（level=info.）
+         * 我的理解：只有 Configurator 初始化, 日志系统才能够正常工作。Configurator是个final class, 只有一次初始化机会。
+         */
         if (shouldConfigureLoggingWithoutConfig()) {
             // initialize default for es.logger.level because we will not read the log4j2.properties
             final String loggerLevel = System.getProperty("es.logger.level", Level.INFO.name());
@@ -123,6 +133,9 @@ public abstract class Command implements Closeable {
             return;
         }
 
+        /**
+         * $$$ Terminal.Verbosity 定义了终端打印日志信息的级别。包含：SILENT， VERBOSE， NORMAL。
+         */
         if (options.has(silentOption)) {
             terminal.setVerbosity(Terminal.Verbosity.SILENT);
         } else if (options.has(verboseOption)) {

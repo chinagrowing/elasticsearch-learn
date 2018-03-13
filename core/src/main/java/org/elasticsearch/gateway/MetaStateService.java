@@ -62,6 +62,9 @@ public class MetaStateService extends AbstractComponent {
             metaDataBuilder = MetaData.builder();
         }
         for (String indexFolderName : nodeEnv.availableIndexFolders()) {
+            /**
+             * $$$ 通过IndexMetaData中定义的解析器MetaDataStateFormat，将从磁盘文件解析为元数据。
+             */
             IndexMetaData indexMetaData = IndexMetaData.FORMAT.loadLatestState(logger, namedXContentRegistry,
                 nodeEnv.resolveIndexFolder(indexFolderName));
             if (indexMetaData != null) {

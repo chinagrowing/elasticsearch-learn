@@ -1122,6 +1122,9 @@ public class IndexMetaData implements Diffable<IndexMetaData>, ToXContentFragmen
         }
 
         public static IndexMetaData fromXContent(XContentParser parser) throws IOException {
+            /**
+             * $$$ parser的原理不清楚. parser.nextToken() 中，token代表什么含义，如何获取的？目前只知道parser将磁盘数据解析为IndexMetaData中各元素
+             */
             if (parser.currentToken() == null) { // fresh parser? move to the first token
                 parser.nextToken();
             }
@@ -1265,6 +1268,9 @@ public class IndexMetaData implements Diffable<IndexMetaData>, ToXContentFragmen
 
     /**
      * State format for {@link IndexMetaData} to write to and load from disk
+     */
+    /**
+     * $$$ 通过IndexMetaData中定义的解析器MetaDataStateFormat，将从磁盘文件解析为元数据。
      */
     public static final MetaDataStateFormat<IndexMetaData> FORMAT = new MetaDataStateFormat<IndexMetaData>(XContentType.SMILE, INDEX_STATE_FILE_PREFIX) {
 

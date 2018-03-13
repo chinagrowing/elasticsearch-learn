@@ -74,12 +74,20 @@ class Elasticsearch extends EnvironmentAwareCommand {
     public static void main(final String[] args) throws Exception {
         // we want the JVM to think there is a security manager installed so that if internal policy decisions that would be based on the
         // presence of a security manager or lack thereof act as if there is a security manager present (e.g., DNS cache policy)
+        /**
+         * $$$ SecurityManager为java自带的类，用于控制如访问文件，socket等权限。其配置文件为 **.policy. 如目前的resources 目录下的 security.policy
+         */
         System.setSecurityManager(new SecurityManager() {
             @Override
             public void checkPermission(Permission perm) {
                 // grant all permissions so that we can later set the security manager to the one that we want
             }
         });
+        /**
+         * $$$ 添加了一个StatusConsoleListener(Level.ERROR)。StatusConsoleListener： Writes status messages to the console.
+         * 我的理解：日志输出会根据log4j2.properties来配置。但是在真正加载配置之前，即目前刚启动阶段，配置这么一个错误监听器，当开始配置日志的时候，
+         * 就可以根据该错误监听器来判断 是否能够正确配置。往后之后，就应该是各种日志配置的logger来做日志输出处理了。
+         */
         LogConfigurator.registerErrorListener();
         final Elasticsearch elasticsearch = new Elasticsearch();
         int status = main(args, elasticsearch, Terminal.DEFAULT);
@@ -113,6 +121,9 @@ class Elasticsearch extends EnvironmentAwareCommand {
             return;
         }
 
+        /**
+         * $$$ debug模式： daemonize=false, quiet=false, pidFile=null.
+         */
         final boolean daemonize = options.has(daemonizeOption);
         final Path pidFile = pidfileOption.value(options);
         final boolean quiet = options.has(quietOption);
@@ -127,6 +138,9 @@ class Elasticsearch extends EnvironmentAwareCommand {
     void init(final boolean daemonize, final Path pidFile, final boolean quiet, Environment initialEnv)
         throws NodeValidationException, UserException {
         try {
+            /**
+             * $$$ init()才是真正进入关键逻辑。Bootstrap.init(true, null, false, initialEnv);
+             */
             Bootstrap.init(!daemonize, pidFile, quiet, initialEnv);
         } catch (BootstrapException | RuntimeException e) {
             // format exceptions to the console in a special way

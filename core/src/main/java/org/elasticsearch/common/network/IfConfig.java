@@ -41,6 +41,19 @@ public final class IfConfig {
 
     /** log interface configuration at debug level, if its enabled */
     public static void logIfNecessary() {
+        /**
+         * $$$ 打印日志。如果日志级别在Debug之上, 如INFO， 则isDebugEnabled为false.
+         * Question: 既然log.debug()在没有指定输出级别为DEBUG时不会有输出，为什么还要在前面加一个isDebugEnabled()的判断?
+         * 摘录：
+         * "log.debug( "xxxx ");}我很奇怪，为什么要与log.isDebugEnabled()？既然log.debug()在没有指定输出级别为DEBUG时不会有输出，
+         * 为什么还要在前面加一个isDebugEnabled()的判断？为了效率，如果上述那个代码那么简单是没有必要的 但是如果这样
+         * if (log.isDebugEnabled()) { log.debug(buildFullString()); } 如果这个buildFullString效率不太高，那么如果直接写
+         * log.debug(buildFullString());的话 虽然它不会打印语句，但是buildFullString还是被执行了，这样就白费了功夫。
+         * 所以加上isDebugEnabled就可以避免执行buildFullString了 这个方法一般用在认为buildFullString这个函数效率不太高的情况下，
+         * 加不加if，效果相同，但是效率不同 在你的例子里，debug的参数就是一个string，所以没有太本质的差别 但是假如log.debug( "map= " + map)的话，
+         * 在调用debug之前，必然需要调用map.toString()，而这个操作可能导致更多的大量字符串操作，最后，才能得到这个辛辛苦苦拼接出来的结果，
+         * 作为参数传入debug()，结果，这个参数却不需要（一般在log方法入口就判断输出level）。"
+         */
         if (logger.isDebugEnabled()) {
             try {
                 doLogging();
