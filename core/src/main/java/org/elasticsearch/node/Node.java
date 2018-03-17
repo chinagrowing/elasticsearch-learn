@@ -38,13 +38,7 @@ import org.elasticsearch.bootstrap.BootstrapCheck;
 import org.elasticsearch.bootstrap.BootstrapContext;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.client.node.NodeClient;
-import org.elasticsearch.cluster.ClusterInfo;
-import org.elasticsearch.cluster.ClusterInfoService;
-import org.elasticsearch.cluster.ClusterModule;
-import org.elasticsearch.cluster.ClusterState;
-import org.elasticsearch.cluster.ClusterStateObserver;
-import org.elasticsearch.cluster.InternalClusterInfoService;
-import org.elasticsearch.cluster.NodeConnectionsService;
+import org.elasticsearch.cluster.*;
 import org.elasticsearch.cluster.action.index.MappingUpdatedAction;
 import org.elasticsearch.cluster.metadata.IndexMetaData;
 import org.elasticsearch.cluster.metadata.IndexTemplateMetaData;
@@ -157,6 +151,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
@@ -602,7 +597,12 @@ public class Node implements Closeable {
         injector.getInstance(ResourceWatcherService.class).start();
         injector.getInstance(GatewayService.class).start();
         Discovery discovery = injector.getInstance(Discovery.class);
-        clusterService.getMasterService().setClusterStatePublisher(discovery::publish);
+        clusterService.getMasterService().setClusterStatePublisher(new BiConsumer<ClusterChangedEvent, Discovery.AckListener>() {
+            @Override
+            public void accept(ClusterChangedEvent clusterChangedEvent, Discovery.AckListener ackListener) {
+                discovery.publish(clusterChangedEvent, ackListener);
+            }
+        });
 
         // Start the transport service now so the publish address will be added to the local disco node in ClusterService
         TransportService transportService = injector.getInstance(TransportService.class);
