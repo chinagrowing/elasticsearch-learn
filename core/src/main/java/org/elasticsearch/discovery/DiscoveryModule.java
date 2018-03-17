@@ -47,6 +47,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -93,14 +94,22 @@ public class DiscoveryModule {
 
         Map<String, Supplier<Discovery>> discoveryTypes = new HashMap<>();
         discoveryTypes.put("zen",
-            () -> new ZenDiscovery(settings, threadPool, transportService, namedWriteableRegistry, masterService, clusterApplier,
-                clusterSettings, hostsProvider, allocationService, Collections.unmodifiableCollection(joinValidators)));
+                new Supplier<Discovery>() {
+                    @Override
+                    public Discovery get() {
+                        return new ZenDiscovery(settings, threadPool, transportService, namedWriteableRegistry, masterService, clusterApplier,
+                                clusterSettings, hostsProvider, allocationService, Collections.unmodifiableCollection(joinValidators));
+                    }
+                });
         discoveryTypes.put("single-node", () -> new SingleNodeDiscovery(settings, transportService, masterService, clusterApplier));
         for (DiscoveryPlugin plugin : plugins) {
             plugin.getDiscoveryTypes(threadPool, transportService, namedWriteableRegistry,
-                masterService, clusterApplier, clusterSettings, hostsProvider, allocationService).entrySet().forEach(entry -> {
-                if (discoveryTypes.put(entry.getKey(), entry.getValue()) != null) {
-                    throw new IllegalArgumentException("Cannot register discovery type [" + entry.getKey() + "] twice");
+                masterService, clusterApplier, clusterSettings, hostsProvider, allocationService).entrySet().forEach(new Consumer<Map.Entry<String, Supplier<Discovery>>>() {
+                @Override
+                public void accept(Map.Entry<String, Supplier<Discovery>> entry) {
+                    if (discoveryTypes.put(entry.getKey(), entry.getValue()) != null) {
+                        throw new IllegalArgumentException("Cannot register discovery type [" + entry.getKey() + "] twice");
+                    }
                 }
             });
         }

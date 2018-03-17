@@ -300,10 +300,13 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
     public void runOnApplierThread(final String source, Consumer<ClusterState> clusterStateConsumer,
                                    final ClusterStateTaskListener listener, Priority priority) {
         submitStateUpdateTask(source, ClusterStateTaskConfig.build(priority),
-            (clusterState) -> {
-                clusterStateConsumer.accept(clusterState);
-                return clusterState;
-            },
+                new Function<ClusterState, ClusterState>() {
+                    @Override
+                    public ClusterState apply(ClusterState clusterState) {
+                        clusterStateConsumer.accept(clusterState);
+                        return clusterState;
+                    }
+                },
             listener);
     }
 
@@ -315,12 +318,15 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
     @Override
     public void onNewClusterState(final String source, final java.util.function.Supplier<ClusterState> clusterStateSupplier,
                                   final ClusterStateTaskListener listener) {
-        Function<ClusterState, ClusterState> applyFunction = currentState -> {
-            ClusterState nextState = clusterStateSupplier.get();
-            if (nextState != null) {
-                return nextState;
-            } else {
-                return currentState;
+        Function<ClusterState, ClusterState> applyFunction = new Function<ClusterState, ClusterState>() {
+            @Override
+            public ClusterState apply(ClusterState currentState) {
+                ClusterState nextState = clusterStateSupplier.get();
+                if (nextState != null) {
+                    return nextState;
+                } else {
+                    return currentState;
+                }
             }
         };
         submitStateUpdateTask(source, ClusterStateTaskConfig.build(Priority.HIGH), applyFunction, listener);
@@ -334,10 +340,26 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
         }
         try {
             UpdateTask updateTask = new UpdateTask(config.priority(), source, new SafeClusterStateTaskListener(listener, logger), executor);
+            /**
+             * $$$ 如果有超时限制，在执行updateTask的时候需要设置超时条件
+             */
             if (config.timeout() != null) {
                 threadPoolExecutor.execute(updateTask, config.timeout(),
-                    () -> threadPool.generic().execute(
-                        () -> listener.onFailure(source, new ProcessClusterEventTimeoutException(config.timeout(), source))));
+                        /**
+                         * $$$ 设置超时条件下的执行任务。
+                         */
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                threadPool.generic().execute(
+                                        new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                listener.onFailure(source, new ProcessClusterEventTimeoutException(config.timeout(), source));
+                                            }
+                                        });
+                            }
+                        });
             } else {
                 threadPoolExecutor.execute(updateTask);
             }
@@ -489,12 +511,15 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
     }
 
     private void callClusterStateAppliers(ClusterChangedEvent clusterChangedEvent) {
-        clusterStateAppliers.forEach(applier -> {
-            try {
-                logger.trace("calling [{}] with change to version [{}]", applier, clusterChangedEvent.state().version());
-                applier.applyClusterState(clusterChangedEvent);
-            } catch (Exception ex) {
-                logger.warn("failed to notify ClusterStateApplier", ex);
+        clusterStateAppliers.forEach(new Consumer<ClusterStateApplier>() {
+            @Override
+            public void accept(ClusterStateApplier applier) {
+                try {
+                    logger.trace("calling [{}] with change to version [{}]", applier, clusterChangedEvent.state().version());
+                    applier.applyClusterState(clusterChangedEvent);
+                } catch (Exception ex) {
+                    logger.warn("failed to notify ClusterStateApplier", ex);
+                }
             }
         });
     }

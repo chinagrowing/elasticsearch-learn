@@ -26,6 +26,7 @@ import org.elasticsearch.client.node.NodeClient;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.rest.BaseRestHandler;
+import org.elasticsearch.rest.RestChannel;
 import org.elasticsearch.rest.RestController;
 import org.elasticsearch.rest.RestRequest;
 import org.elasticsearch.rest.action.AcknowledgedRestListener;
@@ -53,11 +54,16 @@ public class RestCreateIndexAction extends BaseRestHandler {
         createIndexRequest.timeout(request.paramAsTime("timeout", createIndexRequest.timeout()));
         createIndexRequest.masterNodeTimeout(request.paramAsTime("master_timeout", createIndexRequest.masterNodeTimeout()));
         createIndexRequest.waitForActiveShards(ActiveShardCount.parseString(request.param("wait_for_active_shards")));
-        return channel -> client.admin().indices().create(createIndexRequest, new AcknowledgedRestListener<CreateIndexResponse>(channel) {
+        return new RestChannelConsumer() {
             @Override
-            public void addCustomFields(XContentBuilder builder, CreateIndexResponse response) throws IOException {
-                response.addCustomFields(builder);
+            public void accept(RestChannel channel) throws Exception {
+                client.admin().indices().create(createIndexRequest, new AcknowledgedRestListener<CreateIndexResponse>(channel) {
+                    @Override
+                    public void addCustomFields(XContentBuilder builder, CreateIndexResponse response) throws IOException {
+                        response.addCustomFields(builder);
+                    }
+                });
             }
-        });
+        };
     }
 }
