@@ -82,6 +82,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BinaryOperator;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -206,14 +207,32 @@ public class UnicastZenPing extends AbstractComponent implements ZenPing {
         if (resolveTimeout.nanos() < 0) {
             throw new IllegalArgumentException("resolve timeout must be non-negative but was [" + resolveTimeout + "]");
         }
+
+        /**
+         * $$$ 将es 配置文件中配置的地址解析为TransportAddress[]（数组）
+         */
         // create tasks to submit to the executor service; we will wait up to resolveTimeout for these tasks to complete
         final List<Callable<TransportAddress[]>> callables =
             hosts
                 .stream()
-                .map(hn -> (Callable<TransportAddress[]>) () -> transportService.addressesFromString(hn, limitPortCounts))
+                .map(new Function<String, Callable<TransportAddress[]>>() {
+                    @Override
+                    public Callable<TransportAddress[]> apply(String hn) {
+                        return (Callable<TransportAddress[]>) new Callable<TransportAddress[]>() {
+                            @Override
+                            public TransportAddress[] call() throws Exception {
+                                return transportService.addressesFromString(hn, limitPortCounts);
+                            }
+                        };
+                    }
+                })
                 .collect(Collectors.toList());
         final List<Future<TransportAddress[]>> futures =
             executorService.invokeAll(callables, resolveTimeout.nanos(), TimeUnit.NANOSECONDS);
+
+        /**
+         * $$$ localAddresses： TransportAddress "绑定地址"含义不清晰？？？
+         */
         final List<DiscoveryNode> discoveryNodes = new ArrayList<>();
         final Set<TransportAddress> localAddresses = new HashSet<>();
         localAddresses.add(transportService.boundAddress().publishAddress());
@@ -222,7 +241,7 @@ public class UnicastZenPing extends AbstractComponent implements ZenPing {
         // hostname with the corresponding task by iterating together
         final Iterator<String> it = hosts.iterator();
         for (final Future<TransportAddress[]> future : futures) {
-            final String hostname = it.next();
+            final String hostname = it.next();/**$$$ eg: 127.0.0.1:9300*/
             if (!future.isCancelled()) {
                 assert future.isDone();
                 try {
@@ -295,6 +314,15 @@ public class UnicastZenPing extends AbstractComponent implements ZenPing {
                         final TimeValue requestDuration) {
         final List<DiscoveryNode> seedNodes;
         try {
+            /**
+             * $$$ 从3个地方获取：1. discovery.zen.ping.unicast.hosts列表 -- configuredHosts；
+             * 2. hostsProvider.buildDynamicNodes()
+             * 3. 本实例最近一次的clusterState的masterNode。
+             *
+             * seednodes 只是返回可能存在的节点IP 地址，但不保证这些节点可访问。是否可访问时通过接下来的ping操作实现。
+             *
+             * configuredHosts： eg: ["127.0.0.1:9300","127.0.0.1:9301","127.0.0.1:9302"]
+             */
             seedNodes = resolveHostsLists(
                 unicastZenPingExecutorService,
                 logger,
@@ -306,13 +334,20 @@ public class UnicastZenPing extends AbstractComponent implements ZenPing {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        seedNodes.addAll(hostsProvider.buildDynamicNodes());
+        seedNodes.addAll(hostsProvider.buildDynamicNodes()); /**$$$ 不清楚hostsProvider*/
         final DiscoveryNodes nodes = contextProvider.clusterState().nodes();
         // add all possible master nodes that were active in the last known cluster configuration
         for (ObjectCursor<DiscoveryNode> masterNode : nodes.getMasterNodes().values()) {
             seedNodes.add(masterNode.value);
         }
 
+        /**
+         * $$$ 3个node， seedNodes如下：0，1，2代表了配置文件中配置地址； 3代表从ClusteState获取的masterNodes
+         * 0 = {DiscoveryNode@7708} "{#zen_unicast_127.0.0.1:9300_0#}{00qJnqNGT0ycgWKQAiVEKg}{127.0.0.1}{127.0.0.1:9300}"
+         * 1 = {DiscoveryNode@7709} "{#zen_unicast_127.0.0.1:9301_0#}{g4je-UOSRTGVKVJEoroWhQ}{127.0.0.1}{127.0.0.1:9301}"
+         * 2 = {DiscoveryNode@7710} "{#zen_unicast_127.0.0.1:9302_0#}{z3WmBjgETGyovH9XDsKZXg}{127.0.0.1}{127.0.0.1:9302}"
+         * 3 = {DiscoveryNode@7711} "{node}{sPd7S6iPQ7WQWeG7T4Uq4w}{DnfqLY3JTR2KRukuX-_cuA}{172.17.5.146}{172.17.5.146:9300}"
+         */
         final ConnectionProfile connectionProfile =
             ConnectionProfile.buildSingleChannelProfile(TransportRequestOptions.Type.REG, requestDuration, requestDuration);
         final PingingRound pingingRound = new PingingRound(pingingRoundIdGenerator.incrementAndGet(), seedNodes, resultsConsumer,
@@ -331,6 +366,9 @@ public class UnicastZenPing extends AbstractComponent implements ZenPing {
                 sendPings(requestDuration, pingingRound);
             }
         };
+        /**
+         * $$$ 默认3s(在ZenDiscovery中配置)，每1/3间隔发送一次ping。
+         */
         threadPool.generic().execute(pingSender);
         threadPool.schedule(TimeValue.timeValueMillis(scheduleDuration.millis() / 3), ThreadPool.Names.GENERIC, pingSender);
         threadPool.schedule(TimeValue.timeValueMillis(scheduleDuration.millis() / 3 * 2), ThreadPool.Names.GENERIC, pingSender);
@@ -462,30 +500,51 @@ public class UnicastZenPing extends AbstractComponent implements ZenPing {
 
         pingRequest.pingResponse = createPingResponse(lastState);
 
-        Set<DiscoveryNode> nodesFromResponses = temporalResponses.stream().map(pingResponse -> {
-            assert clusterName.equals(pingResponse.clusterName()) :
-                "got a ping request from a different cluster. expected " + clusterName + " got " + pingResponse.clusterName();
-            return pingResponse.node();
+        Set<DiscoveryNode> nodesFromResponses = temporalResponses.stream().map(new Function<PingResponse, DiscoveryNode>() {
+            @Override
+            public DiscoveryNode apply(PingResponse pingResponse) {
+                assert clusterName.equals(pingResponse.clusterName()) :
+                        "got a ping request from a different cluster. expected " + clusterName + " got " + pingResponse.clusterName();
+                return pingResponse.node();
+            }
         }).collect(Collectors.toSet());
 
         // dedup by address
         final Map<TransportAddress, DiscoveryNode> uniqueNodesByAddress =
             Stream.concat(pingingRound.getSeedNodes().stream(), nodesFromResponses.stream())
-                .collect(Collectors.toMap(DiscoveryNode::getAddress, Function.identity(), (n1, n2) -> n1));
+                .collect(Collectors.toMap(new Function<DiscoveryNode, TransportAddress>() {
+                    @Override
+                    public TransportAddress apply(DiscoveryNode discoveryNode) {
+                        return discoveryNode.getAddress();
+                    }
+                }, Function.identity(), new BinaryOperator<DiscoveryNode>() {
+                    @Override
+                    public DiscoveryNode apply(DiscoveryNode n1, DiscoveryNode n2) {
+                        return n1;
+                    }
+                }));
 
 
         // resolve what we can via the latest cluster state
         final Set<DiscoveryNode> nodesToPing = uniqueNodesByAddress.values().stream()
-            .map(node -> {
-                DiscoveryNode foundNode = lastState.nodes().findByAddress(node.getAddress());
-                if (foundNode == null) {
-                    return node;
-                } else {
-                    return foundNode;
+            .map(new Function<DiscoveryNode, DiscoveryNode>() {
+                @Override
+                public DiscoveryNode apply(DiscoveryNode node) {
+                    DiscoveryNode foundNode = lastState.nodes().findByAddress(node.getAddress());
+                    if (foundNode == null) {
+                        return node;
+                    } else {
+                        return foundNode;
+                    }
                 }
             }).collect(Collectors.toSet());
 
-        nodesToPing.forEach(node -> sendPingRequestToNode(node, timeout, pingingRound, pingRequest));
+        nodesToPing.forEach(new Consumer<DiscoveryNode>() {
+            @Override
+            public void accept(DiscoveryNode node) {
+                UnicastZenPing.this.sendPingRequestToNode(node, timeout, pingingRound, pingRequest);
+            }
+        });
     }
 
     private void sendPingRequestToNode(final DiscoveryNode node, TimeValue timeout, final PingingRound pingingRound,
