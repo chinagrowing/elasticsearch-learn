@@ -181,6 +181,13 @@ public class PublishClusterStateAction extends AbstractComponent {
             // try and serialize the cluster state once (or per version), so we don't serialize it
             // per node when we send it over the wire, compress it while we are at it...
             // we don't send full version if node didn't exist in the previous version of cluster state
+            /**
+             * $$$ 如果diff只相差一个版本，sendClusterStateDiff，否则，sendFullClusterState。
+             * 底层调用sendClusterStateToNode
+             * sendFullClusterState 和sendClusterStateDiff都会调用底层transportService来真正发送状态，
+             * 而状态记录通过一个sendingController来维护，没接收到ack或者timeout都会让controller来check是否达到了minMasterNodes-1，
+             * 达到则标记这次的状态推送commited，其余情况都会抛错。
+             */
             if (sendFullVersion || !previousState.nodes().nodeExists(node)) {
                 sendFullClusterState(clusterState, serializedStates, node, publishTimeout, sendingController);
             } else {
@@ -277,6 +284,10 @@ public class PublishClusterStateAction extends AbstractComponent {
                     options,
                     new EmptyTransportResponseHandler(ThreadPool.Names.SAME) {
 
+                        /**
+                         * master先向所有节点发送这个状态，需要等minMasterNodes确认了这个通知，master节点才会把这个状态mark成commited，
+                         * 再sendCommitToNode() 告知所有节点把commited这个状态。
+                         */
                         @Override
                         public void handleResponse(TransportResponse.Empty response) {
                             if (sendingController.getPublishingTimedOut()) {

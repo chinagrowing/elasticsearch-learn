@@ -29,12 +29,7 @@ import org.elasticsearch.common.settings.Setting.Property;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.util.CollectionUtils;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class ElectMasterService extends AbstractComponent {
@@ -138,15 +133,31 @@ public class ElectMasterService extends AbstractComponent {
      * if no master has been elected.
      */
     public MasterCandidate electMaster(Collection<MasterCandidate> candidates) {
+        /**
+         * $$$ 选择stateversion最小的节点作为master
+         */
         assert hasEnoughCandidates(candidates);
         List<MasterCandidate> sortedCandidates = new ArrayList<>(candidates);
-        sortedCandidates.sort(MasterCandidate::compare);
+        sortedCandidates.sort(new Comparator<MasterCandidate>() {
+            @Override
+            public int compare(MasterCandidate c1, MasterCandidate c2) {
+                return MasterCandidate.compare(c1, c2);
+            }
+        });
         return sortedCandidates.get(0);
     }
 
     /** selects the best active master to join, where multiple are discovered */
     public DiscoveryNode tieBreakActiveMasters(Collection<DiscoveryNode> activeMasters) {
-        return activeMasters.stream().min(ElectMasterService::compareNodes).get();
+        /**
+         * $$$ 在都是master节点的情况下，选取ID小的节点
+         */
+        return activeMasters.stream().min(new Comparator<DiscoveryNode>() {
+            @Override
+            public int compare(DiscoveryNode o1, DiscoveryNode o2) {
+                return compareNodes(o1, o2);
+            }
+        }).get();
     }
 
     public boolean hasEnoughMasterNodes(Iterable<DiscoveryNode> nodes) {

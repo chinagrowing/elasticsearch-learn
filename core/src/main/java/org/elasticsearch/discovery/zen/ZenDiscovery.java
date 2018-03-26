@@ -147,6 +147,10 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
 
     private final PendingClusterStatesQueue pendingStatesQueue;
 
+    /**
+     * $$$ NodeJsonController： "processes incoming join request"-- 一旦自己是master节点，会等待其他节点发来join请求。此即为
+     * 处理这些请求的controller
+     */
     private final NodeJoinController nodeJoinController;
     private final NodeRemovalClusterStateTaskExecutor nodeRemovalExecutor;
     private final ClusterApplier clusterApplier;
@@ -442,6 +446,9 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
      * or spawn a new join thread upon failure to do so.
      */
     private void innerJoinCluster() {
+        /**
+         * $$$ masternode 选举
+         */
         DiscoveryNode masterNode = null;
         final Thread currentThread = Thread.currentThread();
         nodeJoinController.startElectionContext();
@@ -454,9 +461,15 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
             return;
         }
 
+        /**
+         * $$$ "如果这个master是别人，则就简单的发送个join请求过去就好了，如果选出的master是你自己，那就还有一件很重要的事要做，
+         * 还记得那个discovery.zen.minimum_master_nodes参数吗，一般要求这个值需要配成你的集群的cluster节点数的一半+1，
+         * 以预防有脑裂，当前如果你选举出自己是master，那么你还需要等待 minimumMasterNodes() - 1 这么多个人join过来并认同你
+         * 是master，那你才是真正的master，选举才结束。"
+         */
         if (transportService.getLocalNode().equals(masterNode)) {
             final int requiredJoins = Math.max(0, electMaster.minimumMasterNodes() - 1); // we count as one
-            logger.debug("elected as master, waiting for incoming joins ([{}] needed)", requiredJoins);
+            logger.debug("elected as master, waiting for incoming joins ([{}] ninnerjeeded)", requiredJoins);
             nodeJoinController.waitToBeElectedAsMaster(requiredJoins, masterElectionWaitForJoinsTimeout,
                     new NodeJoinController.ElectionCallback() {
                         @Override
@@ -477,15 +490,25 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
 
             );
         } else {
+            /**
+             * $$$ ElectionContext是NodeJoinController的内部类。如果自己是master节点，则ElectionContext会记录其他节点发过来的join请求。
+             * 因此，如果自己不是master node，electioncontext就没有意义。
+             */
             // process any incoming joins (they will fail because we are not the master)
             nodeJoinController.stopElectionContext(masterNode + " elected");
 
             // send join request
             final boolean success = joinElectedMaster(masterNode);
 
+            /**
+             * $$$ 等待join超时配置，超时后还没有满足数量的join请求，则选举失败，需要新一轮选举
+             */
             synchronized (stateMutex) {
                 if (success) {
                     DiscoveryNode currentMasterNode = this.clusterState().getNodes().getMasterNode();
+                    /**
+                     * $$$ mark下，什么时候出现currentMasterNode == null 或者urrentMasterNode.equals(masterNode) == false 的情况
+                     */
                     if (currentMasterNode == null) {
                         // Post 1.3.0, the master should publish a new cluster state before acking our join request. we now should have
                         // a valid master.
@@ -924,6 +947,10 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
 
     private DiscoveryNode findMaster() {
         logger.trace("starting to ping");
+        /**
+         * $$$ 通过UnicastZenPing 查找所有的node。
+         * 个人理解：节点彼此之间相互ping，那么整个集群网络存在（n-1）^2个ping。n：节点数
+         */
         List<ZenPing.PingResponse> fullPingResponses = pingAndWait(pingTimeout).toList();
         if (fullPingResponses == null) {
             logger.trace("No full ping responses");
@@ -945,13 +972,20 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
 
         // add our selves
         assert fullPingResponses.stream().map(ZenPing.PingResponse::node)
-            .filter(n -> n.equals(localNode)).findAny().isPresent() == false;
+                .filter(n -> n.equals(localNode)).findAny().isPresent() == false;
 
         fullPingResponses.add(new ZenPing.PingResponse(localNode, null, this.clusterState()));
 
         // filter responses
+        /**
+         * $$$ 在elasticsearch.yml中，如果discovery.zen.master_election.ignore_non_master_pings=false, 则将非masternode忽略
+         */
         final List<ZenPing.PingResponse> pingResponses = filterPingResponses(fullPingResponses, masterElectionIgnoreNonMasters, logger);
 
+        /**
+         * $$$ 从这些pingResponse里面收集其他节点当前的master节点是谁，最后拿到一个activeMasters的候选的名单，并把自己给去掉。
+         * 个人理解：如果每个节点都选择自己作为masternode，那么没有节点会发送join请求。那时所有节点都在等待join请求。
+         */
         List<DiscoveryNode> activeMasters = new ArrayList<>();
         for (ZenPing.PingResponse pingResponse : pingResponses) {
             // We can't include the local node in pingMasters list, otherwise we may up electing ourselves without
@@ -962,6 +996,9 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
         }
 
         // nodes discovered during pinging
+        /**
+         * $$$ masterCandidates：角色为master的节点，不是指节点本身就是master（有点绕，节点角色为master是指elasticsearch.yml 设置master:true）
+         */
         List<ElectMasterService.MasterCandidate> masterCandidates = new ArrayList<>();
         for (ZenPing.PingResponse pingResponse : pingResponses) {
             if (pingResponse.node().isMasterNode()) {
@@ -969,6 +1006,11 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
             }
         }
 
+        /**
+         * $$$ 放眼集群，其他节点没有一个节点为master。（但可能本身就是master，因为activeMasters排除了自己）。
+         * 如果activeMasters不为空，则不考虑masterCandidates， master节点直接从里面选。
+         * 如果activeMasters为空，则从masterCandidates 里选出master
+         */
         if (activeMasters.isEmpty()) {
             if (electMaster.hasEnoughCandidates(masterCandidates)) {
                 final ElectMasterService.MasterCandidate winner = electMaster.electMaster(masterCandidates);
@@ -977,7 +1019,7 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
             } else {
                 // if we don't have enough master nodes, we bail, because there are not enough master to elect from
                 logger.warn("not enough master nodes discovered during pinging (found [{}], but needed [{}]), pinging again",
-                            masterCandidates, electMaster.minimumMasterNodes());
+                        masterCandidates, electMaster.minimumMasterNodes());
                 return null;
             }
         } else {
@@ -1074,7 +1116,12 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
     private ZenPing.PingCollection pingAndWait(TimeValue timeout) {
         final CompletableFuture<ZenPing.PingCollection> response = new CompletableFuture<>();
         try {
-            zenPing.ping(response::complete, timeout);
+            zenPing.ping(new Consumer<ZenPing.PingCollection>() {
+                @Override
+                public void accept(ZenPing.PingCollection value) {
+                    response.complete(value);
+                }
+            }, timeout);
         } catch (Exception ex) {
             // logged later
             response.completeExceptionally(ex);
