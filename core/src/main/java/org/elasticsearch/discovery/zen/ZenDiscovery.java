@@ -473,17 +473,10 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
         }
 
         /**
-<<<<<<< HEAD
-         * $$$ 如果这个master是别人，则就简单的发送个join请求过去就好了，如果选出的master是你自己，那就还有一件很重要的事要做，
-         * 还记得那个discovery.zen.minimum_master_nodes参数吗，一般要求这个值需要配成你的集群的cluster节点数的一半+1，
-         * 以预防有脑裂，当前如果你选举出自己是master，那么你还需要等待 minimumMasterNodes() - 1 这么多个人join过来并认同你
-         * 是master，那你才是真正的master，选举才结束。
-=======
          * $$$ "如果这个master是别人，则就简单的发送个join请求过去就好了，如果选出的master是你自己，那就还有一件很重要的事要做，
          * 还记得那个discovery.zen.minimum_master_nodes参数吗，一般要求这个值需要配成你的集群的cluster节点数的一半+1，
          * 以预防有脑裂，当前如果你选举出自己是master，那么你还需要等待 minimumMasterNodes() - 1 这么多个人join过来并认同你
          * 是master，那你才是真正的master，选举才结束。"
->>>>>>> 876a8b96b326b8fe69cb3874625cbd3bf926c935
          */
         if (transportService.getLocalNode().equals(masterNode)) {
             final int requiredJoins = Math.max(0, electMaster.minimumMasterNodes() - 1); // we count as one
@@ -966,12 +959,8 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
     private DiscoveryNode findMaster() {
         logger.trace("starting to ping");
         /**
-<<<<<<< HEAD
-         * $$$ 通过UnicastZenPing 查找所有的node
-=======
          * $$$ 通过UnicastZenPing 查找所有的node。
          * 个人理解：节点彼此之间相互ping，那么整个集群网络存在（n-1）^2个ping。n：节点数
->>>>>>> 876a8b96b326b8fe69cb3874625cbd3bf926c935
          */
         List<ZenPing.PingResponse> fullPingResponses = pingAndWait(pingTimeout).toList();
         if (fullPingResponses == null) {
@@ -1005,12 +994,8 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
         final List<ZenPing.PingResponse> pingResponses = filterPingResponses(fullPingResponses, masterElectionIgnoreNonMasters, logger);
 
         /**
-<<<<<<< HEAD
-         * $$$ 从这些pingResponse里面收集其他节点当前的master节点是谁，最后拿到一个activeMasters的候选的名单，并把自己给去掉
-=======
          * $$$ 从这些pingResponse里面收集其他节点当前的master节点是谁，最后拿到一个activeMasters的候选的名单，并把自己给去掉。
          * 个人理解：如果每个节点都选择自己作为masternode，那么没有节点会发送join请求。那时所有节点都在等待join请求。
->>>>>>> 876a8b96b326b8fe69cb3874625cbd3bf926c935
          */
         List<DiscoveryNode> activeMasters = new ArrayList<>();
         for (ZenPing.PingResponse pingResponse : pingResponses) {
