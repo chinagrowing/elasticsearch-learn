@@ -124,6 +124,15 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
     private final MembershipAction membership;
     private final ThreadPool threadPool;
 
+    /**
+     * $$$
+     * pingTimeout: 取自discovery.zen.ping_timeout（默认为3s）允许调整选举时间来处理网络慢或拥塞的情况（更高的值确保更少的失败机会）。
+     * joinTimeout：取自discovery.zen.join_timeout（默认值为ping超时的20倍）。当一个新的node加入集群时，将会发个join的request到master，这个request的timeout即joinTimeout。
+     * joinRetryAttempts：join重试的次数，默认为3次。
+     * joinRetryDelay：重试的间隔，默认为100ms。
+     * maxPingsFromAnotherMaster：容忍其他master发出的,在强制其他或是本地master rejoin之前的次数。???????????
+     * masterElectionWaitForJoinsTimeout： master选举时等待join的timeout,默认是joinTimeout的一半。（如果本节点选举自己是是master，需要等待其他节点发送join请求过来。该参数即等待时间)
+     */
     private final TimeValue pingTimeout;
     private final TimeValue joinTimeout;
 
@@ -148,7 +157,8 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
     private final PendingClusterStatesQueue pendingStatesQueue;
 
     /**
-     * $$$ NodeJsonController： "processes incoming join request"-- 一旦自己是master节点，会等待其他节点发来join请求。此即为
+     * $$$
+     * NodeJsonController： "processes incoming join request"-- 一旦自己是master节点，会等待其他节点发来join请求。此即为
      * 处理这些请求的controller
      */
     private final NodeJoinController nodeJoinController;
@@ -157,6 +167,7 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
     private final AtomicReference<ClusterState> committedState; // last committed cluster state
     private final Object stateMutex = new Object();
     private final Collection<BiConsumer<DiscoveryNode, ClusterState>> onJoinValidators;
+
 
     public ZenDiscovery(Settings settings, ThreadPool threadPool, TransportService transportService,
                         NamedWriteableRegistry namedWriteableRegistry, MasterService masterService, ClusterApplier clusterApplier,
@@ -1010,6 +1021,8 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
          * $$$ 放眼集群，其他节点没有一个节点为master。（但可能本身就是master，因为activeMasters排除了自己）。
          * 如果activeMasters不为空，则不考虑masterCandidates， master节点直接从里面选。
          * 如果activeMasters为空，则从masterCandidates 里选出master
+         *
+         * 如果activeMasters有两个，说明集群存在两个master节点。不管activeMasters是多少，都要进行一次选举（只有1则选举结果还是原来结果，选不选举处理结果一样）。
          */
         if (activeMasters.isEmpty()) {
             if (electMaster.hasEnoughCandidates(masterCandidates)) {
@@ -1291,6 +1304,9 @@ public class ZenDiscovery extends AbstractLifecycleComponent implements Discover
      * All control of the join thread should happen under the cluster state update task thread.
      * This is important to make sure that the background joining process is always in sync with any cluster state updates
      * like master loss, failure to join, received cluster state while joining etc.
+     */
+    /**
+     * $$$ 所有相关的join处理都通过JoinThreadControl完成。
      */
     private class JoinThreadControl {
 
